@@ -1,0 +1,100 @@
+#include <ESP8266WiFi.h> #include <WiFiClientSecure.h> #include<DHT.h>
+#define DHTPIN D2 #define DHTTYPE DHT11
+#define SensorPin A0
+
+
+unsigned long int avgValue; //Store the average value of the sensor feedback
+float b;
+int buf[10],temp;
+
+
+DHT dht(DHTPIN, DHTTYPE);
+
+const char* ssid = ""; // name of your wifi network const char* password = "";	// wifi pasword
+ 
+const char* host = "script.google.com"; const int httpsPort = 443;
+
+// WiFiClientSecure class to create TLS connection WiFiClientSecure client;
+String SHEET_ID = "AKfycbw-jZFa33hOrVPvkc4rpQ3YkKSJ7BVYII4eqodPZDvYl53ZmmXy"; // Replace by your google sheet id
+Int it; int ih;
+void setup()
+{
+
+
+pinMode(13,OUTPUT); dht.begin(); // sensor Serial.begin(9600); //Serial Serial.println();
+
+//connecting to internet Serial.print("connecting to "); Serial.println(ssid); WiFi.mode(WIFI_STA); WiFi.begin(ssid, password);
+while (WiFi.status() != WL_CONNECTED) { delay(500);
+Serial.print(".");
+}
+Serial.println(""); Serial.println("WiFi connected"); Serial.println("IP address: "); Serial.println(WiFi.localIP());
+
+
+}
+
+void loop()
+{
+float h = dht.readHumidity(); float t = dht.readTemperature(); Serial.print("Temp = "); Serial.print(t);
+Serial.print(" HUM= "); Serial.println(h);
+it = (int) t; ih = (int) h;
+
+
+
+
+for (int i=0,i<10,i++) //Get 10 sample value from the sensor for smooth the value
+{ buf[i]=analogRead(SensorPin);
+delay(10);
+ 
+}
+for(int i=0;i<9;i++)	//sort the analog from small to large
+{
+for(int j=i+1;j<10;j++)
+{
+if(buf[i]>buf[j])
+{
+temp=buf[i];
+buf[i]=buf[j];
+buf[j]=temp;
+}
+}
+}
+avgValue=0;
+for(int i=2;i<8;i++)	//take the average value of 6 center sample
+avgValue+=buf[i];
+float phValue=(float)avgValue*5.0/1024/6; //convert the analog into millivolt
+phValue=3.5*phValue;	//convert the millivolt into pH value
+digitalWrite(13, HIGH);
+delay(800);
+digitalWrite(13, LOW);
+}
+
+sendData(it, ih,phValue); delay(2000);
+}
+
+// Function for Send data into Google Spreadsheet void sendData(int tem, int hum, floar pH)
+{
+Serial.print("connecting to "); Serial.println(host);
+if (!client.connect(host, httpsPort)) { Serial.println("connection failed"); return;
+}
+
+String string_temperature = String(tem, DEC); String string_humidity = String(hum, DEC);
+String string pH= String(pH,DEC)
+String url = "/macros/s/" + SHEET_ID + "/exec?temperature=" + string_temperature + "&humidity=" + string_humidity+ “&pH=”+string pH;
+Serial.print("requesting URL: "); Serial.println(url);
+
+client.print(String("GET ") + url + " HTTP/1.1\r\n" + "Host: " + host + "\r\n" +
+ 
+"User-Agent: BuildFailureDetectorESP8266\r\n" + "Connection: close\r\n\r\n");
+
+Serial.println("request sent"); while (client.connected()) {
+String line = client.readStringUntil('\n'); if (line == "\r") {
+Serial.println("headers received"); break;
+}
+}
+String line = client.readStringUntil('\n');
+if (line.startsWith("{\"state\":\"success\"")) { Serial.println("esp8266/Arduino CI successfull!");
+} else {
+Serial.println("esp8266/Arduino CI has failed");
+}
+Serial.println("reply was:"); Serial.println("=========="); Serial.println(line); Serial.println("=========="); Serial.println("closing connection");
+}
